@@ -1,0 +1,122 @@
+pipeline {
+   agent none
+    options {
+      gitLabConnection('gitlab-1')
+      gitlabBuilds(builds: ['clone at Centos', 'clone at ubuntu', 'test-apache2', 'test-nginx', 'deploy'])
+      timestamps()
+    }
+    triggers {
+      gitlab(
+        triggerOnPush: true, 
+        triggerOnMergeRequest: true, 
+        branchFilterType: "NameBasedFilter",
+        includeBranchesSpec: "master,<branch name>",
+        pendingBuildName: "Jenkins",
+        cancelPendingBuildsOnUpdate: false
+      )
+    }
+    stages {
+      stage('git clone') {
+      parallel {
+       stage('clone at Centos') {
+	       agent { label 'Centos7' }
+           steps {
+             gitlabCommitStatus('clone at Centos'){
+               git branch: "${gitlabSourceBranch}",
+               credentialsId: '<jenkins credentials>',
+               url: '<repo url>'
+            }
+          }
+        }
+        stage('clone at ubuntu') {
+	       agent { label 'ansible' }
+           steps {
+             gitlabCommitStatus('clone at ubuntu'){
+               git branch: "${gitlabSourceBranch}",
+               credentialsId: '<jenkins credentials>',
+               url: '<repo url>'
+            }
+          }
+        }
+      }
+    }
+  
+     stage('build test section on diffierent web server') {
+       parallel {
+       stage('test-apache2') {
+		     agent {
+           docker { 
+			 label 'ansible'
+             image '<apache2 image>'
+             args "-i -u root:root -p 8080:80 --name dxi-apache2 --entrypoint='' -v /home/user/<conf>:/etc/apache2/sites-avaiiable -v '/home/user/workspace/Declarative pipeline test:/var/www/html'"
+           }
+         }
+         steps {
+           gitlabCommitStatus('test-apache2'){
+	         sh 'apt update -y'
+             sh 'apt install git wget curl vim -y'
+			 sh 'service apache2 restart'
+             input message: 'enter http://IP:8080 on browser check new version web site, clike "Process" to continute', ok: 'Continue'
+          }
+        }
+      }
+       stage('test-nginx') {
+		 agent {
+           docker { 
+			 label 'ansible'
+             image 'nginx:latest'
+             args "-i -u root:root -p 8081:80 --name dxi-nginx --entrypoint='' -v /home/user/<conf>:/etc/nginx/conf.d -v '/home/user/workspace/Declarative pipeline test:/var/www/html'"
+             }
+          }  
+            steps {
+              gitlabCommitStatus('test-nginx'){
+			    sh 'apt update -y'
+                sh 'apt install git wget curl vim -y'
+                sh 'nginx -t'
+			    sh 'service nginx restart'
+                input message: 'enter http://IP:8081 on browser check new version web site, clike "Process" to continute', ok: 'Continue'
+             
+              }
+           }
+        }
+      }
+     }
+       stage('deploy') {
+         agent { label 'ansible' }
+            steps {
+              gitlabCommitStatus('deploy'){
+                echo 'Deploying'
+                ansiColor('xterm'){
+                ansiblePlaybook(
+                    playbook: '<ansible playbook>',
+                    inventory: '<ansible inventory>',
+                    extras: "-e 'version=$gitlabSourceBranch'",
+                    colorized: true
+                 )
+                deleteDir()
+               }
+             }
+           }
+        }
+    }
+   post {
+        success {
+            echo 'step success'
+            updateGitlabCommitStatus name: 'Jenkins', state: 'success'
+            mail to: '<user mail>',
+            subject: "Pipeline success: ${currentBuild.fullDisplayName}",
+            body: "Good!, pipeline test is success, see ${env.BUILD_URL} for pipeline status"
+            }
+        failure {
+            echo 'something wrong'
+            updateGitlabCommitStatus name: 'Jenkins', state: 'failed'
+            mail to: '<user mail>',
+            subject: "Failed Pipeline: ${currentBuild.fullDisplayName}",
+            body: "Something is wrong with ${env.BUILD_URL}"
+          }
+        aborted {
+            echo 'there is something wrong that user aborting pipeline.'
+            updateGitlabCommitStatus name: 'Jenkins', state: 'canceled'
+        }
+    }
+}
