@@ -46,7 +46,7 @@ pipeline {
        stage('test-apache2') {
 		     agent {
            docker { 
-			 label 'ansible'
+			      label 'ansible'
              image '<apache2 image>'
              args "-i -u root:root -p 8080:80 --name dxi-apache2 --entrypoint='' -v /home/user/<conf>:/etc/apache2/sites-avaiiable -v '/home/user/workspace/Declarative pipeline test:/var/www/html'"
            }
@@ -54,28 +54,27 @@ pipeline {
          steps {
            gitlabCommitStatus('test-apache2'){
 	         sh 'apt update -y'
-             sh 'apt install git wget curl vim -y'
-			 sh 'service apache2 restart'
-             input message: 'enter http://IP:8080 on browser check new version web site, clike "Process" to continute', ok: 'Continue'
+           sh 'apt install git wget curl vim -y'
+			     sh 'service apache2 restart'
+           input message: 'enter http://IP:8080 on browser check new version web site, clike "Process" to continute', ok: 'Continue'
           }
         }
       }
        stage('test-nginx') {
 		 agent {
            docker { 
-			 label 'ansible'
+			       label 'ansible'
              image 'nginx:latest'
              args "-i -u root:root -p 8081:80 --name dxi-nginx --entrypoint='' -v /home/user/<conf>:/etc/nginx/conf.d -v '/home/user/workspace/Declarative pipeline test:/var/www/html'"
              }
           }  
             steps {
               gitlabCommitStatus('test-nginx'){
-			    sh 'apt update -y'
+			          sh 'apt update -y'
                 sh 'apt install git wget curl vim -y'
                 sh 'nginx -t'
-			    sh 'service nginx restart'
+			          sh 'service nginx restart'
                 input message: 'enter http://IP:8081 on browser check new version web site, clike "Process" to continute', ok: 'Continue'
-             
               }
            }
         }
